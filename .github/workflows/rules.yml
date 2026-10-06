@@ -1,0 +1,78 @@
+# Copies the rules PDF of the mee.plus games to Scaleway Object Storage, for the AI assistant only
+# (MeePlus/meeplus-next, scripts/rule-files/fetch.ts, docs/regles.md): never shown on the site, stored
+# privately under rules/. Sources: Play-In (rules of the product linked by EAN) and MyLudo (files of category
+# « rule », only when MYLUDO_COOKIE is set: MyLudo serves its files to logged-in members only).
+#
+# Progress lives in the database: a file already stored is never fetched again. Runs after each import.
+#
+# Secrets: MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_SCW_ACCESS_KEY,
+# MEEPLUS_SCW_SECRET_KEY; optional MYLUDO_COOKIE (see README.md).
+name: Règles mee.plus
+
+on:
+  workflow_run:
+    workflows: [Import mee.plus]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Store the rules (unchecked: dry run on 5 files, nothing written)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meeplus-rules
+  cancel-in-progress: false
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.MEEPLUS_DATABASE_URL }}
+      SCW_ACCESS_KEY: ${{ secrets.MEEPLUS_SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.MEEPLUS_SCW_SECRET_KEY }}
+      SCW_REGION: fr-par
+      SCW_ENDPOINT: https://s3.fr-par.scw.cloud
+      SCW_BUCKET_NAME: meeplus
+      MYLUDO_COOKIE: ${{ secrets.MYLUDO_COOKIE }}
+      RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.apply) && '--apply --max-minutes=100' || '--limit=5' }}
+      DATA: ${{ github.workspace }}/data-repo/data
+    steps:
+      - name: Check secrets
+        env:
+          DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          REPO_TOKEN: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$DATA_TOKEN" ] || [ -z "$REPO_TOKEN" ] || [ -z "$SCW_ACCESS_KEY" ] || [ -z "$SCW_SECRET_KEY" ]; then
+            echo "::error::Secrets MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_SCW_ACCESS_KEY and MEEPLUS_SCW_SECRET_KEY are required (see README.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: slimooo/scrappfire
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/checkout@v4
+        with:
+          repository: MeePlus/meeplus-next
+          token: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+          path: meeplus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: meeplus/package-lock.json
+      - name: Install
+        working-directory: meeplus
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma generate
+      - run: bash scripts/myludo-games.sh "$DATA/myludo/games.jsonl"
+      - name: Fetch the rules
+        working-directory: meeplus
+        run: npm run rules:fetch -- "$DATA/shops/meeplus-boutiques.jsonl.gz" --myludo="$DATA/myludo/games.jsonl" $RUN
