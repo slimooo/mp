@@ -1,0 +1,22 @@
+{
+  "name": "mp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Automatisation de mee.plus : scrapers MyLudo, Play-In, Ludum et Philibert, et déclenchement des imports vers mee.plus. Le code n'a aucune dépendance : Node 22+ suffit.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "scrape:daily": "bash scripts/daily-scrape.sh",
+    "scrape:myludo": "node scrapers/myludo/scrape.mjs",
+    "scrape:myludo:people": "node scrapers/myludo/people.mjs",
+    "scrape:myludo:names": "node scrapers/myludo/names.mjs",
+    "scrape:myludo:export": "node scrapers/myludo/export.mjs",
+    "scrape:playin": "node scrapers/playin/scrape.mjs",
+    "scrape:ludum": "node scrapers/ludum/scrape.mjs",
+    "scrape:philibert": "node scrapers/philibert/scrape.mjs",
+    "match:playin": "node scrapers/shop-match/match.mjs --shop playin --label Play-In",
+    "match:ludum": "node scrapers/shop-match/match.mjs --shop ludum --label Ludum --only-missing-from playin",
+    "match:philibert": "node scrapers/shop-match/match.mjs --shop philibert --label Philibert --only-missing-from playin,ludum",
+    "consolidate": "node scrapers/shop-match/consolidate.mjs"
+  }
+}
