@@ -1,0 +1,93 @@
+# Publishes the pictures of the mee.plus sheets (MeePlus/meeplus-next, scripts/shop-images/publish.ts,
+# docs/images-boutiques.md): for each sheet, the pictures of the first shop that has some (Play-In, Ludum,
+# Philibert), else MyLudo's official pictures; white background removed, dominant colours measured, WebP on
+# Scaleway Object Storage, cover and gallery of the sheet filled. A cover already set is never replaced.
+#
+# Progress lives in the database: each run handles the sheets left (5 h 20 at most) and the next one carries
+# on; sheets the import has not created yet are picked up later. Runs after each import and every 6 hours.
+# The analysis of the pictures is a separate workflow (« Analyse IA des images ») that this one never waits for.
+#
+# Secrets: MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_SCW_ACCESS_KEY,
+# MEEPLUS_SCW_SECRET_KEY (see README.md).
+name: Images mee.plus
+
+on:
+  workflow_run:
+    workflows: [Import mee.plus]
+    types: [completed]
+  schedule:
+    - cron: "47 1-23/6 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Publish (unchecked: dry run on 10 sheets, nothing written)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meeplus-images-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      DATABASE_URL: ${{ secrets.MEEPLUS_DATABASE_URL }}
+      SCW_ACCESS_KEY: ${{ secrets.MEEPLUS_SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.MEEPLUS_SCW_SECRET_KEY }}
+      SCW_REGION: fr-par
+      SCW_ENDPOINT: https://s3.fr-par.scw.cloud
+      SCW_BUCKET_NAME: meeplus
+      PYTHON: python
+      RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.apply) && '--apply --max-minutes=320' || '--limit=10' }}
+      DATA: ${{ github.workspace }}/data-repo/data
+    steps:
+      - name: Check secrets
+        env:
+          DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          REPO_TOKEN: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$DATA_TOKEN" ] || [ -z "$REPO_TOKEN" ] || [ -z "$SCW_ACCESS_KEY" ] || [ -z "$SCW_SECRET_KEY" ]; then
+            echo "::error::Secrets MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_SCW_ACCESS_KEY and MEEPLUS_SCW_SECRET_KEY are required (see README.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: slimooo/scrappfire
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/checkout@v4
+        with:
+          repository: MeePlus/meeplus-next
+          token: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+          path: meeplus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: meeplus/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The background removal model (~180 MB) is downloaded once, then cached.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.u2net
+            ~/.rembg
+          key: rembg-isnet-general-use
+      - name: Install
+        working-directory: meeplus
+        run: |
+          pip install --quiet "rembg[cpu]" pillow numpy scipy
+          npm ci --no-audit --no-fund
+          npx prisma generate
+      - run: bash scripts/myludo-games.sh "$DATA/myludo/games.jsonl"
+      - name: Publish
+        working-directory: meeplus
+        run: npm run images:publish -- "$DATA/shops/meeplus-boutiques.jsonl.gz" --myludo="$DATA/myludo/games.jsonl" $RUN

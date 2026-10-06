@@ -1,0 +1,144 @@
+# Adds the new games to mee.plus (MeePlus/meeplus-next scripts, run here against the production database):
+#   games   scripts/import-myludo.ts          new games get a sheet, ranges with 2+ sheets become collections
+#   people  scripts/import-myludo-people.ts   credits (authors, illustrators, publishers) of the new sheets
+#   search  scripts/import-myludo-ratings.ts then scripts/search-index.ts (MyLudo ratings base, Algolia index)
+# The imports only add: existing sheets are never changed nor deleted. A step that hits its time limit stops
+# cleanly, the next run carries on, and the following steps still run. Runs after each daily scrape, and
+# every 6 hours while the catalogue is catching up.
+#
+# Secrets: MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_ALGOLIA_APP_ID,
+# MEEPLUS_ALGOLIA_WRITE_KEY (see README.md).
+name: Import mee.plus
+
+on:
+  workflow_run:
+    workflows: [Scrape quotidien]
+    types: [completed]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write to the database (unchecked: dry run)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meeplus-import
+  cancel-in-progress: false
+
+env:
+  DATABASE_URL: ${{ secrets.MEEPLUS_DATABASE_URL }}
+  ALGOLIA_APP_ID: ${{ secrets.MEEPLUS_ALGOLIA_APP_ID }}
+  ALGOLIA_WRITE_KEY: ${{ secrets.MEEPLUS_ALGOLIA_WRITE_KEY }}
+  APPLY: ${{ (github.event_name != 'workflow_dispatch' || inputs.apply) && '--apply' || '' }}
+  DATA: ${{ github.workspace }}/data-repo/data/myludo
+
+jobs:
+  games:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check secrets
+        env:
+          DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          REPO_TOKEN: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$DATA_TOKEN" ] || [ -z "$REPO_TOKEN" ]; then
+            echo "::error::Secrets MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN and MEEPLUS_REPO_TOKEN are required (see README.md)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: slimooo/scrappfire
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/checkout@v4
+        with:
+          repository: MeePlus/meeplus-next
+          token: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+          path: meeplus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: meeplus/package-lock.json
+      - name: Install
+        working-directory: meeplus
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma generate
+      - run: bash scripts/myludo-games.sh "$DATA/games.jsonl"
+      # Stops creating sheets after 270 min: the collections pass at the end (up to an hour) still fits in the job.
+      - name: Import games
+        working-directory: meeplus
+        run: npm run import:myludo -- "$DATA/games.jsonl" $APPLY --max-minutes=270
+
+  people:
+    needs: games
+    # Also after a games step stopped on its time limit: the sheets already created get their credits.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: slimooo/scrappfire
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/checkout@v4
+        with:
+          repository: MeePlus/meeplus-next
+          token: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+          path: meeplus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: meeplus/package-lock.json
+      - name: Install
+        working-directory: meeplus
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma generate
+      - name: Import people and credit the new games
+        working-directory: meeplus
+        run: npm run import:myludo:people -- "$DATA/people.jsonl.gz" "$DATA/people.csv.gz" $APPLY --max-minutes=320
+
+  search:
+    needs: people
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: MeePlus/meeplus-next
+          token: ${{ secrets.MEEPLUS_REPO_TOKEN }}
+          path: meeplus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: meeplus/package-lock.json
+      - name: Install
+        working-directory: meeplus
+        run: |
+          npm ci --no-audit --no-fund
+          npx prisma generate
+      - name: MyLudo ratings base
+        working-directory: meeplus
+        run: npm run import:myludo:ratings -- $APPLY
+      - name: Rebuild the search index
+        working-directory: meeplus
+        run: |
+          if [ -z "$ALGOLIA_APP_ID" ] || [ -z "$ALGOLIA_WRITE_KEY" ]; then
+            echo "::warning::Secrets MEEPLUS_ALGOLIA_APP_ID / MEEPLUS_ALGOLIA_WRITE_KEY missing: new sheets cannot be found by the search."
+            exit 0
+          fi
+          if [ -z "$APPLY" ]; then echo "Dry run: search index left as is."; exit 0; fi
+          npm run search:index

@@ -1,0 +1,58 @@
+# Daily scrape of MyLudo, Play-In, Ludum and Philibert (scripts/daily-scrape.sh): new games, products and
+# rules, then the matching with the mee.plus games and the consolidated mee.plus × shops file. The scraped
+# data is never stored here: it is read from and written back to the private data repository
+# (slimooo/scrappfire, folder data/), as one commit per day when something changed.
+# When it is done, « Import mee.plus » runs.
+#
+# Secret: DATA_REPO_TOKEN (see README.md).
+name: Scrape quotidien
+
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-repo
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      DATA_DIR: ${{ github.workspace }}/data-repo/data
+      MAX_MINUTES: 60
+    steps:
+      - name: Check secrets
+        env:
+          TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::error::Secret DATA_REPO_TOKEN missing (see README.md)."; exit 1; fi
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: slimooo/scrappfire
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Scrape
+        run: bash scripts/daily-scrape.sh
+      - name: Save the data
+        working-directory: data-repo
+        run: |
+          git config user.name "mp scrape"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data
+          if git diff --cached --quiet; then
+            echo "Rien de nouveau."
+          else
+            git diff --cached --stat | tail -1
+            git commit -q -m "Scrape du $(date -u +%F)"
+            git push
+          fi
