@@ -9,11 +9,12 @@ Ce dépôt contient **uniquement le code et les workflows** qui alimentent [mee.
 | 3 | Mise à jour de la base mee.plus : **ajout** des nouveaux jeux seulement, jamais de modification ni de suppression de fiche | workflow **Import mee.plus** |
 | 4 | Récupération des images, détourage du fond blanc, couleurs, publication | workflow **Images mee.plus** |
 | 5 | Analyse des images par IA (fiche IA de chaque image) | workflow **Analyse IA des images** |
+| 6 | Règles PDF (Play-In, MyLudo) copiées sur Scaleway en privé, pour l'assistant IA uniquement, jamais affichées | workflow **Règles mee.plus** |
 
 Ce qu'il ne contient **pas** :
 
 - **les données scrapées** : elles restent dans le dépôt privé [slimooo/scrappfire](https://github.com/slimooo/scrappfire) (dossier `data/`). Les workflows les lisent et y écrivent avec un jeton ; rien n'est copié ici ;
-- **le code du site** : les scripts d'import et d'images (3, 4, 5) font partie du dépôt privé [MeePlus/meeplus-next](https://github.com/MeePlus/meeplus-next) (`scripts/import-myludo*.ts`, `scripts/shop-images/`), car ils utilisent la logique du site (création des fiches, schéma de la base). Les workflows d'ici les récupèrent et les lancent.
+- **le code du site** : les scripts d'import, d'images et de règles (3 à 6) font partie du dépôt privé [MeePlus/meeplus-next](https://github.com/MeePlus/meeplus-next) (`scripts/import-myludo*.ts`, `scripts/shop-images/`, `scripts/rule-files/`), car ils utilisent la logique du site (création des fiches, schéma de la base). Les workflows d'ici les récupèrent et les lancent.
 
 Le dépôt est public pour que les minutes GitHub Actions soient gratuites. Aucun secret n'est dans le code ; les journaux d'exécution, eux, sont publics (titres de jeux, nombres de fiches) et ne contiennent jamais de secret (GitHub les masque).
 
@@ -25,6 +26,7 @@ Le dépôt est public pour que les minutes GitHub Actions soient gratuites. Aucu
 | **Import mee.plus** (`meeplus-import.yml`) | après chaque scrape, et toutes les 6 h | nouvelles fiches, crédits, gammes, base des notes MyLudo, index de recherche | quelques minutes une fois le catalogue à jour ; plusieurs exécutions de quelques heures pour rattraper le retard |
 | **Images mee.plus** (`images-publish.yml`) | après chaque import, et toutes les 6 h | images des fiches pas encore traitées | ~2 s par image |
 | **Analyse IA des images** (`images-analyze.yml`) | toutes les heures, 50 min au plus | images publiées pas encore analysées | ~4 images par minute |
+| **Règles mee.plus** (`rules.yml`) | après chaque import | PDF de règles pas encore copiés | ~1 fichier par seconde |
 
 Chaque traitement reprend où il s'était arrêté : l'avancement est dans les fichiers de scrappfire (scrapers) ou dans la base mee.plus (import, images, analyse). Deux exécutions d'un même workflow ne tournent jamais en même temps. L'analyse IA ne bloque jamais la publication des images.
 
@@ -43,6 +45,7 @@ https://github.com/slimooo/mp/settings/secrets/actions
 | `MEEPLUS_ALGOLIA_APP_ID`, `MEEPLUS_ALGOLIA_WRITE_KEY` | les mêmes que `ALGOLIA_APP_ID` / `ALGOLIA_WRITE_KEY` sur le conteneur | import (index de recherche) |
 | `MEEPLUS_SCW_ACCESS_KEY`, `MEEPLUS_SCW_SECRET_KEY` | clé d'API Scaleway avec droit d'écriture sur le bucket `meeplus` | images |
 | `NVIDIA_API_KEY` | clé `nvapi-…` de [build.nvidia.com](https://build.nvidia.com) | analyse IA |
+| `MYLUDO_COOKIE` (facultatif) | cookie de session d'un compte MyLudo connecté : MyLudo ne sert ses fichiers qu'aux membres. Sans lui, seules les règles Play-In sont copiées | règles |
 
 Les jetons *fine-grained* se créent sur https://github.com/settings/personal-access-tokens/new. Un jeton ne couvre qu'un propriétaire : il en faut un pour `slimooo/scrappfire` et un pour `MeePlus/meeplus-next` (l'organisation MeePlus doit autoriser les jetons fine-grained). Donnez-leur une date d'expiration et notez-la : à expiration, les workflows échouent avec un message sur le secret.
 
