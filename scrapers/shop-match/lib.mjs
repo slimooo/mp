@@ -1,5 +1,6 @@
 // Helpers shared by match.mjs and consolidate.mjs.
 import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 import zlib from 'node:zlib';
 
@@ -23,10 +24,29 @@ export function gtin(code) {
   return d.padStart(14, '0');
 }
 
+/**
+ * Reads a JSON Lines file, plain or .gz. An unreadable line is reported (start of it, for diagnosis) and skipped:
+ * one bad record must not stop a whole run, as it did on 17 October 2026 for the Play-In matching.
+ */
 export async function* readJsonl(file) {
   let input = fs.createReadStream(file);
   if (file.endsWith('.gz')) input = input.pipe(zlib.createGunzip());
-  for await (const line of readline.createInterface({ input, crlfDelay: Infinity })) if (line.trim()) yield JSON.parse(line);
+  let n = 0;
+  let skipped = 0;
+  for await (const line of readline.createInterface({ input, crlfDelay: Infinity })) {
+    n++;
+    if (!line.trim()) continue;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch (e) {
+      skipped++;
+      console.error(`${path.basename(file)} : ligne ${n} illisible, ignorée (${String(e.message).split('\n')[0]}) : ${line.slice(0, 160)}`);
+      continue;
+    }
+    yield record;
+  }
+  if (skipped) console.error(`${path.basename(file)} : ${skipped} ligne(s) ignorée(s) sur ${n}.`);
 }
 
 /** Similarity of two titles (0–1), from their character bigrams (Dice coefficient). */

@@ -28,7 +28,7 @@ Le dépôt est public pour que les minutes GitHub Actions soient gratuites. Aucu
 | **Analyse IA des images** (`images-analyze.yml`) | toutes les heures, 50 min au plus | images publiées pas encore analysées | ~4 images par minute |
 | **Règles mee.plus** (`rules.yml`) | après chaque import | PDF de règles pas encore copiés | ~1 fichier par seconde |
 
-Chaque traitement reprend où il s'était arrêté : l'avancement est dans les fichiers de scrappfire (scrapers) ou dans la base mee.plus (import, images, analyse). Deux exécutions d'un même workflow ne tournent jamais en même temps. L'analyse IA ne bloque jamais la publication des images.
+Chaque traitement reprend où il s'était arrêté : l'avancement est dans les fichiers de scrappfire (scrapers) ou dans la base mee.plus (import, images, analyse). Deux exécutions d'un même workflow ne tournent jamais en même temps. L'analyse IA ne bloque jamais la publication des images. Dans le scrape quotidien, un site en panne ou une page illisible n'arrête que son étape : les suivantes tournent, les données des étapes réussies sont enregistrées, et l'exécution est marquée en échec pour signaler le problème (le détail est dans le journal, groupe par groupe).
 
 Tous se lancent aussi à la main : onglet **Actions**, choisir le workflow, **Run workflow** (case décochée : essai sans rien écrire, pour l'import et les images).
 

@@ -43,7 +43,10 @@ jobs:
           node-version: 24
       - name: Scrape
         run: bash scripts/daily-scrape.sh
+      # Also after a failed step: the script goes on past a failing site and leaves the data of the other steps
+      # ready to commit (the run still shows as failed).
       - name: Save the data
+        if: ${{ !cancelled() }}
         working-directory: data-repo
         run: |
           git config user.name "mp scrape"
