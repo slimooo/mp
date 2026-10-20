@@ -1,8 +1,6 @@
 // Helpers shared by match.mjs and consolidate.mjs.
-import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
-import zlib from 'node:zlib';
+import { lines } from '../jsonl.mjs';
 
 // ---------- mee.plus selection (copy of meeplus-next scripts/myludo/common.ts) ----------
 export const norm = (s) => String(s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -26,15 +24,15 @@ export function gtin(code) {
 
 /**
  * Reads a JSON Lines file, plain or .gz. An unreadable line is reported (start of it, for diagnosis) and skipped:
- * one bad record must not stop a whole run, as it did on 17 October 2026 for the Play-In matching.
+ * one bad record must not stop a whole run. Lines end at « \n » only (jsonl.mjs): the Play-In matching of
+ * 17 October 2026 stopped on a description holding U+2028, which node:readline took for a line end.
  */
 export async function* readJsonl(file) {
-  let input = fs.createReadStream(file);
-  if (file.endsWith('.gz')) input = input.pipe(zlib.createGunzip());
   let n = 0;
   let skipped = 0;
-  for await (const line of readline.createInterface({ input, crlfDelay: Infinity })) {
-    n++;
+  for await (const item of lines(file)) {
+    n = item.n;
+    const { line } = item;
     if (!line.trim()) continue;
     let record;
     try {

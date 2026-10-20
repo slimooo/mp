@@ -1,10 +1,11 @@
 // Checks the JSON Lines files the MyLudo scrapers append to (games.jsonl, people.jsonl) before they are sliced
 // and versioned: every line must parse. An unreadable line is removed and printed (its start) for diagnosis; the
 // record it held is simply scraped again next time, since it is no longer in the file. Without this, one bad line
-// stopped every reader (matching, import) and, once versioned, every following run.
+// stopped every reader (matching, import) and, once versioned, every following run. Lines end at « \n » only
+// (jsonl.mjs): node:readline would also cut at U+2028 / U+2029 inside descriptions and remove valid records.
 // Usage: node scrapers/myludo/check.mjs <file.jsonl> [<file.jsonl>…]   (a missing file is skipped)
 import fs from 'node:fs';
-import readline from 'node:readline';
+import { lines } from '../jsonl.mjs';
 
 let failed = false;
 for (const file of process.argv.slice(2)) {
@@ -16,11 +17,9 @@ for (const file of process.argv.slice(2)) {
   }
   const tmp = `${file}.check`;
   const out = fs.createWriteStream(tmp);
-  let n = 0;
   let kept = 0;
   let bad = 0;
-  for await (const line of readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity })) {
-    n++;
+  for await (const { n, line } of lines(file)) {
     if (!line.trim()) continue;
     try {
       JSON.parse(line);
