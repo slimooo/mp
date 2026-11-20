@@ -9,9 +9,9 @@
 # Secrets: MEEPLUS_DATABASE_URL, MEEPLUS_REPO_TOKEN, NVIDIA_API_KEY (see README.md).
 name: Analyse IA des images
 
+# Automatic triggers turned off while DATA_REPO_TOKEN and MEEPLUS_REPO_TOKEN fail ("Bad credentials"):
+# manual runs only. Restore them from git history once the tokens are renewed.
 on:
-  schedule:
-    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       apply:

@@ -11,12 +11,9 @@
 # MEEPLUS_SCW_SECRET_KEY (see README.md).
 name: Images mee.plus
 
+# Automatic triggers turned off while DATA_REPO_TOKEN and MEEPLUS_REPO_TOKEN fail ("Bad credentials"):
+# manual runs only. Restore them from git history once the tokens are renewed.
 on:
-  workflow_run:
-    workflows: [Import mee.plus]
-    types: [completed]
-  schedule:
-    - cron: "47 1-23/6 * * *"
   workflow_dispatch:
     inputs:
       apply:
