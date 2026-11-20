@@ -7,9 +7,9 @@
 # Secret: DATA_REPO_TOKEN (see README.md).
 name: Scrape quotidien
 
+# Automatic triggers turned off while DATA_REPO_TOKEN and MEEPLUS_REPO_TOKEN fail ("Bad credentials"):
+# manual runs only. Restore them from git history once the tokens are renewed.
 on:
-  schedule:
-    - cron: "23 2 * * *"
   workflow_dispatch:
 
 permissions:
