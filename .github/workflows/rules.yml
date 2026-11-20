@@ -3,16 +3,14 @@
 # privately under rules/. Sources: Play-In (rules of the product linked by EAN) and MyLudo (files of category
 # « rule », only when MYLUDO_COOKIE is set: MyLudo serves its files to logged-in members only).
 #
-# Progress lives in the database: a file already stored is never fetched again. Runs after each import.
+# Progress lives in the database: a file already stored is never fetched again. Manual runs only: the
+# automatic run after each import is turned off while DATA_REPO_TOKEN fails ("Bad credentials").
 #
 # Secrets: MEEPLUS_DATABASE_URL, DATA_REPO_TOKEN, MEEPLUS_REPO_TOKEN, MEEPLUS_SCW_ACCESS_KEY,
 # MEEPLUS_SCW_SECRET_KEY; optional MYLUDO_COOKIE (see README.md).
 name: Règles mee.plus
 
 on:
-  workflow_run:
-    workflows: [Import mee.plus]
-    types: [completed]
   workflow_dispatch:
     inputs:
       apply:
